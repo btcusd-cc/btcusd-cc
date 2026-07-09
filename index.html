@@ -21,8 +21,20 @@
             max-width: 500px;
             padding: 20px;
         }
-        h1 { color: #f2a900; font-size: 2.5rem; margin-bottom: 10px; }
-        p { color: #8b949e; font-size: 1.1rem; line-height: 1.5; }
+        h1 { color: #f2a900; font-size: 2.5rem; margin-bottom: 5px; }
+        p { color: #8b949e; font-size: 1.1rem; line-height: 1.5; margin-bottom: 25px; }
+        
+        /* Ticker pro cenu */
+        .price-box {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 25px;
+        }
+        .price-label { color: #8b949e; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
+        .price-value { color: #238636; font-size: 2rem; font-weight: bold; margin-top: 5px; }
+
         input[type="number"] {
             background: #161b22;
             border: 2px solid #30363d;
@@ -35,33 +47,67 @@
             text-align: center;
             outline: none;
         }
-        input[type="number"]:focus {
-            border-color: #f2a900;
-        }
+        input[type="number"]:focus { border-color: #f2a900; }
+        
         button {
-            background-color: #238636;
-            color: white;
+            background-color: #f2a900;
+            color: #0d1117;
             border: none;
             padding: 12px 24px;
             font-size: 1.1rem;
             border-radius: 8px;
             cursor: pointer;
             font-weight: bold;
-            transition: background 0.2s;
+            transition: transform 0.1s;
         }
-        button:hover { background-color: #2ea043; }
+        button:hover { transform: scale(1.03); }
     </style>
 </head>
 <body>
 
     <div class="container">
         <h1>BTCUSD.cc</h1>
-        <p>Can you accurately predict the price of Bitcoin?<br>The game is launching soon.</p>
+        <p>Can you accurately predict the price of Bitcoin?</p>
         
-        <input type="number" placeholder="Enter your price target in USD">
+        <div class="price-box">
+            <div class="price-label">Live Bitcoin Price</div>
+            <div class="price-value" id="btc-price">Loading...</div>
+        </div>
+        
+        <input type="number" id="user-guess" placeholder="Enter your price target in USD">
         <br>
-        <button onclick="alert('Great guess! The game is launching very soon.')">Submit Guess</button>
+        <button onclick="submitGuess()">Submit Guess</button>
     </div>
+
+    <script>
+        // Funkce, která si sáhne na Binance pro aktuální cenu BTC
+        async function fetchBitcoinPrice() {
+            try {
+                const response = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+                const data = await response.json();
+                const price = parseFloat(data.price).toFixed(2);
+                
+                // Formátování ceny na tvar s čárkami (např. 145,250.00)
+                document.getElementById('btc-price').innerText = '$' + Number(price).toLocaleString('en-US', {minimumFractionDigits: 2});
+            } catch (error) {
+                document.getElementById('btc-price').innerText = 'Error loading price';
+            }
+        }
+
+        // Spustíme hned po načtení stránky
+        fetchBitcoinPrice();
+        // A pak aktualizujeme každých 5 sekund
+        setInterval(fetchBitcoinPrice, 5000);
+
+        function submitGuess() {
+            const guess = document.getElementById('user-guess').value;
+            if(!guess) {
+                alert('Please enter a number first!');
+                return;
+            }
+            alert(`Your guess of $${Number(guess).toLocaleString('en-US')} has been noted! Full gameplay mechanism is coming in the next update.`);
+        }
+    </script>
 
 </body>
 </html>
