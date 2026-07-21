@@ -150,7 +150,7 @@
             }
         }
 
-        // Odeslání dat do Supabase
+        // Odeslání dat do Supabase s detailním laděním
         async function submitPrediction(event) {
             event.preventDefault();
             
@@ -159,18 +159,21 @@
             submitBtn.innerText = 'Sending...';
 
             const username = document.getElementById('username').value;
-            const prediction = parseFloat(document.getElementById('price_prediction').value);
+            const predictionInput = document.getElementById('price_prediction') || document.getElementById('prediction');
+            const prediction = parseFloat(predictionInput.value);
             const btc_address = document.getElementById('btc_address').value;
             const email = document.getElementById('email').value || null;
             const week_id = getWeekIdentifier();
 
             const payload = {
                 username: username,
-                price_prediction: price_prediction,
+                price_prediction: prediction,
                 btc_address: btc_address,
                 email: email,
                 week_id: week_id
             };
+
+            console.log("Odesílám tento payload do Supabase:", payload);
 
             try {
                 const response = await fetch(`${SUPABASE_URL}/rest/v1/predictions`, {
@@ -184,15 +187,19 @@
                     body: JSON.stringify(payload)
                 });
 
+                console.log("Supabase HTTP Status:", response.status);
+
                 if (response.ok) {
                     alert('Prediction successfully locked in! Good luck! 🚀');
                     document.getElementById('prediction-form').reset();
                 } else {
-                    const errData = await response.json();
-                    alert('Error: ' + errData.message);
+                    const errorText = await response.text();
+                    console.error("Detailní chyba ze Supabase:", errorText);
+                    alert(`Error (${response.status}): ${errorText}`);
                 }
             } catch (error) {
-                alert('Database connection failed. Please try again.');
+                console.error("Chyba sítě nebo spojení:", error);
+                alert('Database connection failed: ' + error.message);
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.innerText = 'Submit Prediction';
