@@ -159,14 +159,14 @@
             submitBtn.innerText = 'Sending...';
 
             const username = document.getElementById('username').value;
-            const prediction = parseFloat(document.getElementById('prediction').value);
+            const prediction = parseFloat(document.getElementById('price_prediction').value);
             const btc_address = document.getElementById('btc_address').value;
             const email = document.getElementById('email').value || null;
             const week_id = getWeekIdentifier();
 
             const payload = {
                 username: username,
-                prediction: prediction,
+                price_prediction: price_prediction,
                 btc_address: btc_address,
                 email: email,
                 week_id: week_id
