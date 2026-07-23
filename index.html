@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BTCUSD.cc - Predict the Bitcoin Price</title>
+    <!-- Knihovna pro QR kód -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -78,6 +80,29 @@
             font-weight: bold;
             display: none;
         }
+
+        /* Nové styly pro Lightning QR Sekci */
+        #payment-box {
+            display: none;
+            background: #161b22;
+            border: 1px solid #f2a900;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        #qrcode {
+            display: flex;
+            justify-content: center;
+            margin: 15px 0;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+        }
+        .pay-status {
+            color: #238636;
+            font-weight: bold;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -95,21 +120,33 @@
             🔒 Weekend Lock! Predictions are closed. Next round opens on Monday.
         </div>
 
-        <form id="prediction-form" onsubmit="submitPrediction(event)">
+        <form id="prediction-form" onsubmit="handlePredictionSubmit(event)">
             <input type="text" id="username" placeholder="Choose a Nickname" required>
             <input type="number" id="price_prediction" placeholder="Your BTC price prediction (USD)" step="0.01" required>
             <input type="text" id="btc_address" placeholder="Your BTC Address (for potential payout)" required>
             <input type="email" id="email" placeholder="Your Email (optional, for win notification)">
-            <button type="submit" id="submit-btn">Submit Prediction</button>
+            <button type="submit" id="submit-btn">Pay 100 Sats & Submit</button>
         </form>
+
+        <!-- Zde se zobrazí QR kód pro zaplacení přes Blink -->
+        <div id="payment-box">
+            <h3>⚡ Pay Entry Fee (100 Sats)</h3>
+            <p style="font-size: 0.9rem; color: #8b949e;">Scan with Blink or any Lightning wallet to lock in your tip:</p>
+            <div id="qrcode"></div>
+            <p class="pay-status" id="payment-status">⏳ Waiting for Lightning payment...</p>
+        </div>
     </div>
 
     <script>
-        // === NASTAVENÍ SUPABASE (Doplň své údaje sem) ===
+        // === NASTAVENÍ ===
         const SUPABASE_URL = "https://euizdmlikpncmqwkfmhn.supabase.co"; 
         const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1aXpkbWxpa3BuY21xd2tmbWhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNDkzMzksImV4cCI6MjA5OTYyNTMzOX0.QyaAWkMPOAd9cd0ZHifXCiuwGvPEQomO5yG30TzWFRA"; 
+        
+        const LIGHTNING_ADDRESS = "btcusdcc@blink.sv";
+        const ENTRY_FEE_SATS = 100; // Částka za podání jednoho tipu
 
-        // Funkce pro získání kódu aktuálního týdne (např. 2026-W29)
+        let paymentCheckInterval = null;
+
         function getWeekIdentifier() {
             const now = new Date();
             const oneJan = new Date(now.getFullYear(), 0, 1);
@@ -118,18 +155,16 @@
             return `${now.getFullYear()}-W${weekNumber}`;
         }
 
-        // Kontrola, zda je víkend (v pátek po 23:59 UTC do neděle 23:59 UTC)
         function checkIfLocked() {
             const now = new Date();
-            const utcDay = now.getUTCDay(); // 0 = neděle, 5 = pátek, 6 = sobota
+            const utcDay = now.getUTCDay(); 
             const utcHours = now.getUTCHours();
             
             let isLocked = false;
-            
             if (utcDay === 6 || utcDay === 0) {
-                isLocked = true; // Celá sobota a neděle
+                isLocked = true; 
             } else if (utcDay === 5 && utcHours >= 23) {
-                isLocked = true; // Pátek od 23:00 UTC (cca půlnoc)
+                isLocked = true; 
             }
             
             if (isLocked) {
@@ -138,7 +173,6 @@
             }
         }
 
-        // Načítání ceny BTC z Binance
         async function fetchBitcoinPrice() {
             try {
                 const response = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
@@ -149,17 +183,80 @@
                 document.getElementById('btc-price').innerText = 'Error loading price';
             }
         }
-        
-        // Odeslání dat do Supabase
-        async function submitPrediction(event) {
+
+        // --- HODNOSTI DLAŽDICE BLINK LIGHTNING PAYMENT ---
+        async function handlePredictionSubmit(event) {
             event.preventDefault();
             
             const submitBtn = document.getElementById('submit-btn');
             submitBtn.disabled = true;
-            submitBtn.innerText = 'Sending...';
+            submitBtn.innerText = 'Generating Invoice...';
 
-            // Přímé načtení prvků z formuláře
-            const form = event.target;
+            try {
+                // Generování faktury přes Blink LNURL
+                const [user, domain] = LIGHTNING_ADDRESS.split("@");
+                const lnurlUrl = `https://${domain}/.well-known/lnurlp/${user}`;
+                
+                const res = await fetch(lnurlUrl);
+                const lnurlData = await res.json();
+
+                const amountMSats = ENTRY_FEE_SATS * 1000;
+                const callbackUrl = `${lnurlData.callback}?amount=${amountMSats}`;
+                
+                const invoiceRes = await fetch(callbackUrl);
+                const invoiceData = await invoiceRes.json();
+
+                if (!invoiceData.pr) throw new Error("Invoice creation failed");
+
+                // Zobrazení QR kódu
+                const qrcodeContainer = document.getElementById('qrcode');
+                qrcodeContainer.innerHTML = "";
+                new QRCode(qrcodeContainer, {
+                    text: invoiceData.pr,
+                    width: 200,
+                    height: 200
+                });
+
+                document.getElementById('payment-box').style.display = 'block';
+                document.getElementById('payment-status').innerText = '⏳ Waiting for Lightning payment...';
+
+                // Spustíme kontrolu platby
+                if (invoiceData.verify) {
+                    startPaymentVerification(invoiceData.verify, event.target);
+                }
+
+            } catch (error) {
+                console.error("Payment error:", error);
+                alert("Failed to generate Lightning Invoice. Please try again.");
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'Pay 100 Sats & Submit';
+            }
+        }
+
+        // Kontrola zda už uživatel fakturu zaplatil
+        function startPaymentVerification(verifyUrl, formElement) {
+            if (paymentCheckInterval) clearInterval(paymentCheckInterval);
+
+            paymentCheckInterval = setInterval(async () => {
+                try {
+                    const res = await fetch(verifyUrl);
+                    const data = await res.json();
+
+                    if (data.settled) {
+                        clearInterval(paymentCheckInterval);
+                        document.getElementById('payment-status').innerText = '✅ Payment received! Saving prediction...';
+                        
+                        // Po zaplacení pošleme data do Supabase
+                        await saveToSupabase(formElement);
+                    }
+                } catch (e) {
+                    // Čekáme na zaplacení...
+                }
+            }, 2500); // Kontrola každé 2.5 sekundy
+        }
+
+        // Odeslání do Supabase až po úspěšné platbě
+        async function saveToSupabase(form) {
             const username = form.querySelector('input[placeholder*="Nickname"]').value;
             const predictionValue = form.querySelector('input[type="number"]').value;
             const btc_address = form.querySelector('input[placeholder*="BTC Address"]').value;
@@ -169,13 +266,11 @@
 
             const payload = {
                 username: username,
-                price_prediction: parseFloat(predictionValue), // Převedení na čisté číslo
+                price_prediction: parseFloat(predictionValue),
                 btc_address: btc_address,
                 email: email,
                 week_id: week_id
             };
-
-            console.log("Odesílám do Supabase:", payload);
 
             try {
                 const response = await fetch(`${SUPABASE_URL}/rest/v1/predictions`, {
@@ -190,23 +285,23 @@
                 });
 
                 if (response.ok) {
-                    alert('Prediction successfully locked in! Good luck! 🚀');
+                    alert('🎉 Payment confirmed & prediction locked in! Good luck! 🚀');
                     form.reset();
+                    document.getElementById('payment-box').style.display = 'none';
                 } else {
                     const errorText = await response.text();
-                    console.error("Chyba ze Supabase:", errorText);
-                    alert(`Error (${response.status}): ${errorText}`);
+                    alert(`Database Error (${response.status}): ${errorText}`);
                 }
             } catch (error) {
-                console.error("Chyba spojení:", error);
                 alert('Database connection failed: ' + error.message);
             } finally {
+                const submitBtn = document.getElementById('submit-btn');
                 submitBtn.disabled = false;
-                submitBtn.innerText = 'Submit Prediction';
+                submitBtn.innerText = 'Pay 100 Sats & Submit';
             }
         }
 
-        // Spuštění po načtení
+        // Init
         fetchBitcoinPrice();
         setInterval(fetchBitcoinPrice, 5000);
         checkIfLocked();
