@@ -15,22 +15,39 @@
             justify-content: center;
             min-height: 100vh;
             margin: 0;
+            padding: 20px 0;
             text-align: center;
         }
         .container {
-            max-width: 500px;
+            max-width: 550px;
             padding: 20px;
             width: 90%;
         }
         h1 { color: #f2a900; font-size: 2.5rem; margin-bottom: 5px; }
-        p { color: #8b949e; font-size: 1.1rem; line-height: 1.5; margin-bottom: 25px; }
+        p.subtitle { color: #8b949e; font-size: 1.1rem; line-height: 1.5; margin-bottom: 20px; }
         
+        /* Grid pro statistiky (Bank + Odpočet) */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 15px;
+        }
+        .stat-label { color: #8b949e; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; }
+        .stat-value { color: #f2a900; font-size: 1.5rem; font-weight: bold; margin-top: 5px; }
+
         .price-box {
             background: #161b22;
             border: 1px solid #30363d;
             border-radius: 12px;
             padding: 15px;
-            margin-bottom: 25px;
+            margin-bottom: 20px;
         }
         .price-label { color: #8b949e; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
         .price-value { color: #238636; font-size: 2rem; font-weight: bold; margin-top: 5px; }
@@ -43,6 +60,7 @@
             display: flex;
             flex-direction: column;
             gap: 15px;
+            margin-bottom: 25px;
         }
         input {
             background: #0d1117;
@@ -77,6 +95,7 @@
             border-radius: 12px;
             font-weight: bold;
             display: none;
+            margin-bottom: 20px;
         }
 
         #payment-box {
@@ -85,7 +104,7 @@
             border: 1px solid #f2a900;
             border-radius: 12px;
             padding: 20px;
-            margin-top: 20px;
+            margin-bottom: 25px;
         }
         #qrcode-img {
             margin: 15px auto;
@@ -93,24 +112,58 @@
             border: 8px solid white;
             border-radius: 8px;
         }
-        .pay-status {
-            color: #238636;
-            font-weight: bold;
+        .pay-status { color: #238636; font-weight: bold; margin-top: 10px; }
+        .error-msg { color: #f85149; margin-top: 10px; font-size: 0.9rem; }
+
+        /* Styly pro tabulku tipů */
+        .leaderboard-box {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: left;
+        }
+        .leaderboard-box h3 {
+            margin-top: 0;
+            color: #f2a900;
+            font-size: 1.2rem;
+            border-bottom: 1px solid #30363d;
+            padding-bottom: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
             margin-top: 10px;
         }
-        .error-msg {
-            color: #f85149;
-            margin-top: 10px;
-            font-size: 0.9rem;
+        th, td {
+            padding: 10px 8px;
+            text-align: left;
+            font-size: 0.95rem;
         }
+        th { color: #8b949e; font-weight: 600; border-bottom: 1px solid #30363d; }
+        td { border-bottom: 1px solid #21262d; }
+        tr:last-child td { border-bottom: none; }
+        .no-data { text-align: center; color: #8b949e; padding: 15px 0; }
     </style>
 </head>
 <body>
 
     <div class="container">
         <h1>BTCUSD.cc</h1>
-        <p>Can you accurately predict the weekly close of Bitcoin?</p>
+        <p class="subtitle">Can you accurately predict the weekly close of Bitcoin?</p>
         
+        <!-- Přehled Banku a Odpočtu -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">🏆 Prize Pool</div>
+                <div class="stat-value" id="prize-pool">0 Sats</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">⏳ Lock In</div>
+                <div class="stat-value" id="countdown">--:--:--</div>
+            </div>
+        </div>
+
         <div class="price-box">
             <div class="price-label">Live Bitcoin Price</div>
             <div class="price-value" id="btc-price">Loading...</div>
@@ -130,20 +183,36 @@
 
         <div id="payment-box">
             <h3 id="payment-title">⚡ Pay Entry Fee</h3>
-            <p id="payment-desc" style="font-size: 0.9rem; color: #8b949e;">Scan with Blink or any Lightning wallet to lock in your tip:</p>
+            <p id="payment-desc" style="font-size: 0.9rem; color: #8b949e;">Scan with Blink or any Lightning wallet to pay:</p>
             
             <img id="qrcode-img" src="" alt="Lightning QR Code" width="200" height="200">
             
             <p class="pay-status" id="payment-status">⏳ Waiting for Lightning payment...</p>
             <div class="error-msg" id="error-status"></div>
         </div>
+
+        <!-- Veřejná tabulka s tipy pro transparentnost -->
+        <div class="leaderboard-box">
+            <h3 id="leaderboard-title">📊 Current Week Predictions</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nickname</th>
+                        <th>Prediction</th>
+                    </tr>
+                </thead>
+                <tbody id="predictions-table-body">
+                    <tr><td colspan="2" class="no-data">Loading predictions...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <script>
         // =========================================================
-        // ⚙️ HLAVNÍ NASTAVENÍ (MĚŇ POUZE TOTO ČÍSLO)
+        // ⚙️ HLAVNÍ NASTAVENÍ
         // =========================================================
-        const ENTRY_FEE_SATS = 1; // 👈 Změň toto číslo na libovolnou hodnotu!
+        const ENTRY_FEE_SATS = 100; // Změň na požadovanou hodnotu v Sats
         
         const LIGHTNING_ADDRESS = "btcusdcc@blink.sv";
         const SUPABASE_URL = "https://euizdmlikpncmqwkfmhn.supabase.co"; 
@@ -151,7 +220,6 @@
 
         let paymentCheckInterval = null;
 
-        // Automatická aktualizace všech textů na stránce podle nastavené ceny
         function updateUIWithSatoshiPrice() {
             const submitBtn = document.getElementById('submit-btn');
             const paymentTitle = document.getElementById('payment-title');
@@ -168,6 +236,38 @@
             const numberOfDays = Math.floor((now - oneJan) / (24 * 60 * 60 * 1000));
             const weekNumber = Math.ceil((now.getDay() + 1 + numberOfDays) / 7);
             return `${now.getFullYear()}-W${weekNumber}`;
+        }
+
+        // --- VYPOČET ODPOČTU DO PÁTKU 23:00 UTC ---
+        function updateCountdown() {
+            const now = new Date();
+            const utcDay = now.getUTCDay(); // 0 = Sun, 5 = Fri, 6 = Sat
+            
+            // Cílový čas: Tento týden v pátek ve 23:00 UTC
+            let target = new Date(Date.UTC(
+                now.getUTCFullYear(),
+                now.getUTCMonth(),
+                now.getUTCDate() + ((5 - utcDay + 7) % 7),
+                23, 0, 0
+            ));
+
+            // Pokud je dnes pátek po 23:00 nebo sobota, uzávěrka už proběhla
+            if (now >= target) {
+                document.getElementById('countdown').innerText = "LOCKED";
+                return;
+            }
+
+            const diff = target - now;
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+            const minutes = Math.floor((diff / 1000 / 60) % 60);
+            const seconds = Math.floor((diff / 1000) % 60);
+
+            if (days > 0) {
+                document.getElementById('countdown').innerText = `${days}d ${hours}h ${minutes}m`;
+            } else {
+                document.getElementById('countdown').innerText = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }
         }
 
         function checkIfLocked() {
@@ -199,6 +299,51 @@
             }
         }
 
+        // --- NAČÍTÁNÍ TABULKY TIPŮ A VÝPOČET BANKU ---
+        async function fetchPredictionsAndPool() {
+            const week_id = getWeekIdentifier();
+            document.getElementById('leaderboard-title').innerText = `📊 Current Week Predictions (${week_id})`;
+
+            try {
+                // Načteme tipy pro aktuální týden seřazené od nejnovějších
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/predictions?week_id=eq.${week_id}&select=username,price_prediction,created_at&order=created_at.desc`, {
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`
+                    }
+                });
+
+                if (response.ok) {
+                    const predictions = await response.json();
+                    
+                    // 1. Spočítáme bank (Prize Pool)
+                    const totalSats = predictions.length * ENTRY_FEE_SATS;
+                    document.getElementById('prize-pool').innerText = `${totalSats.toLocaleString()} Sats`;
+
+                    // 2. Vykreslíme tabulku
+                    const tbody = document.getElementById('predictions-table-body');
+                    if (predictions.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="2" class="no-data">No predictions yet. Be the first! 🚀</td></tr>';
+                    } else {
+                        tbody.innerHTML = predictions.map(p => `
+                            <tr>
+                                <td><strong>${escapeHtml(p.username)}</strong></td>
+                                <td style="color: #238636; font-weight: bold;">$${Number(p.price_prediction).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                            </tr>
+                        `).join('');
+                    }
+                }
+            } catch (error) {
+                console.error("Error loading predictions:", error);
+            }
+        }
+
+        function escapeHtml(text) {
+            return text.replace(/[&<>"']/g, function(m) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+            });
+        }
+
         async function handlePredictionSubmit(event) {
             event.preventDefault();
             
@@ -211,7 +356,6 @@
             submitBtn.innerText = 'Generating Invoice...';
 
             try {
-                // 1. LNURL požadavek
                 const [user, domain] = LIGHTNING_ADDRESS.split("@");
                 const lnurlUrl = `https://${domain}/.well-known/lnurlp/${user}`;
                 
@@ -220,7 +364,6 @@
                 
                 const lnurlData = await res.json();
 
-                // 2. Vytvoření faktury na dynamickou částku
                 const amountMSats = ENTRY_FEE_SATS * 1000;
                 const callbackUrl = `${lnurlData.callback}?amount=${amountMSats}`;
                 
@@ -231,14 +374,12 @@
 
                 if (!invoiceData.pr) throw new Error("No payment request returned");
 
-                // 3. Generování QR kódu
                 const qrImg = document.getElementById('qrcode-img');
                 qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(invoiceData.pr)}`;
 
                 paymentBox.style.display = 'block';
                 document.getElementById('payment-status').innerText = '⏳ Waiting for Lightning payment...';
 
-                // 4. Kontrola platby na pozadí
                 if (invoiceData.verify) {
                     startPaymentVerification(invoiceData.verify, event.target);
                 } else {
@@ -269,7 +410,7 @@
                         await saveToSupabase(formElement);
                     }
                 } catch (e) {
-                    // Čekáme na zaplacení...
+                    // Čekáme...
                 }
             }, 2500);
         }
@@ -306,6 +447,8 @@
                     alert('🎉 Payment confirmed & prediction locked in! Good luck! 🚀');
                     form.reset();
                     document.getElementById('payment-box').style.display = 'none';
+                    // Ihned obnovíme tabulku tipů a bank
+                    fetchPredictionsAndPool();
                 } else {
                     const errorText = await response.text();
                     alert(`Database Error (${response.status}): ${errorText}`);
@@ -319,11 +462,16 @@
             }
         }
 
-        // Init
+        // --- INICIALIZACE ---
         updateUIWithSatoshiPrice();
         fetchBitcoinPrice();
-        setInterval(fetchBitcoinPrice, 5000);
+        fetchPredictionsAndPool();
         checkIfLocked();
+        
+        // Intervaly
+        setInterval(fetchBitcoinPrice, 5000);
+        setInterval(updateCountdown, 1000);
+        updateCountdown();
     </script>
 </body>
 </html>
