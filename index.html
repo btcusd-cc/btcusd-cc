@@ -19,14 +19,13 @@
             text-align: center;
         }
         .container {
-            max-width: 550px;
+            max-width: 650px; /* Mírně rozšířeno pro širší tabulku */
             padding: 20px;
             width: 90%;
         }
         h1 { color: #f2a900; font-size: 2.5rem; margin-bottom: 5px; }
         p.subtitle { color: #8b949e; font-size: 1.1rem; line-height: 1.5; margin-bottom: 20px; }
         
-        /* Grid pro statistiky (Bank + Odpočet) */
         .stats-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -40,7 +39,7 @@
             padding: 15px;
         }
         .stat-label { color: #8b949e; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; }
-        .stat-value { color: #f2a900; font-size: 1.5rem; font-weight: bold; margin-top: 5px; }
+        .stat-value { color: #f2a900; font-size: 1.4rem; font-weight: bold; margin-top: 5px; }
 
         .price-box {
             background: #161b22;
@@ -122,6 +121,7 @@
             border-radius: 12px;
             padding: 20px;
             text-align: left;
+            overflow-x: auto; /* Pro posun na mobilu, kdyby byla tabulka moc široká */
         }
         .leaderboard-box h3 {
             margin-top: 0;
@@ -138,12 +138,13 @@
         th, td {
             padding: 10px 8px;
             text-align: left;
-            font-size: 0.95rem;
+            font-size: 0.85rem;
         }
         th { color: #8b949e; font-weight: 600; border-bottom: 1px solid #30363d; }
         td { border-bottom: 1px solid #21262d; }
         tr:last-child td { border-bottom: none; }
         .no-data { text-align: center; color: #8b949e; padding: 15px 0; }
+        .btc-addr { font-family: monospace; color: #8b949e; cursor: help; }
     </style>
 </head>
 <body>
@@ -152,7 +153,6 @@
         <h1>BTCUSD.cc</h1>
         <p class="subtitle">Can you accurately predict the weekly close of Bitcoin?</p>
         
-        <!-- Přehled Banku a Odpočtu -->
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="stat-label">🏆 Prize Pool</div>
@@ -191,7 +191,6 @@
             <div class="error-msg" id="error-status"></div>
         </div>
 
-        <!-- Veřejná tabulka s tipy pro transparentnost -->
         <div class="leaderboard-box">
             <h3 id="leaderboard-title">📊 Current Week Predictions</h3>
             <table>
@@ -199,10 +198,12 @@
                     <tr>
                         <th>Nickname</th>
                         <th>Prediction</th>
+                        <th>Payout BTC Address</th>
+                        <th>Email</th>
                     </tr>
                 </thead>
                 <tbody id="predictions-table-body">
-                    <tr><td colspan="2" class="no-data">Loading predictions...</td></tr>
+                    <tr><td colspan="4" class="no-data">Loading predictions...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -212,7 +213,7 @@
         // =========================================================
         // ⚙️ HLAVNÍ NASTAVENÍ
         // =========================================================
-        const ENTRY_FEE_SATS = 100; // Změň na požadovanou hodnotu v Sats
+        const ENTRY_FEE_SATS = 100; 
         
         const LIGHTNING_ADDRESS = "btcusdcc@blink.sv";
         const SUPABASE_URL = "https://euizdmlikpncmqwkfmhn.supabase.co"; 
@@ -238,33 +239,37 @@
             return `${now.getFullYear()}-W${weekNumber}`;
         }
 
-        // --- VYPOČET ODPOČTU DO PÁTKU 23:00 UTC ---
         function updateCountdown() {
             const now = new Date();
-            const utcDay = now.getUTCDay(); // 0 = Sun, 5 = Fri, 6 = Sat
+            const utcDay = now.getUTCDay();
             
-            // Cílový čas: Tento týden v pátek ve 23:00 UTC
-            let target = new Date(Date.UTC(
+            let daysUntilFriday = (5 - utcDay + 7) % 7;
+            
+            if (utcDay === 5 && now.getUTCHours() >= 23) {
+                daysUntilFriday = 7;
+            }
+
+            const target = new Date(Date.UTC(
                 now.getUTCFullYear(),
                 now.getUTCMonth(),
-                now.getUTCDate() + ((5 - utcDay + 7) % 7),
+                now.getUTCDate() + daysUntilFriday,
                 23, 0, 0
             ));
 
-            // Pokud je dnes pátek po 23:00 nebo sobota, uzávěrka už proběhla
-            if (now >= target) {
+            const diff = target - now;
+
+            if (diff <= 0) {
                 document.getElementById('countdown').innerText = "LOCKED";
                 return;
             }
 
-            const diff = target - now;
             const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-            const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
-            const minutes = Math.floor((diff / 1000 / 60) % 60);
-            const seconds = Math.floor((diff / 1000) % 60);
+            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
             if (days > 0) {
-                document.getElementById('countdown').innerText = `${days}d ${hours}h ${minutes}m`;
+                document.getElementById('countdown').innerText = `${days}d ${hours}h ${minutes}m ${seconds}s`;
             } else {
                 document.getElementById('countdown').innerText = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
             }
@@ -299,14 +304,21 @@
             }
         }
 
+        // Pomocná funkce pro zkrácení BTC adresy (zobrazí např. bc1qxy...x0wlh)
+        function formatBtcAddress(addr) {
+            if (!addr) return '-';
+            if (addr.length <= 12) return addr;
+            return `${addr.substring(0, 6)}...${addr.substring(addr.length - 6)}`;
+        }
+
         // --- NAČÍTÁNÍ TABULKY TIPŮ A VÝPOČET BANKU ---
         async function fetchPredictionsAndPool() {
             const week_id = getWeekIdentifier();
             document.getElementById('leaderboard-title').innerText = `📊 Current Week Predictions (${week_id})`;
 
             try {
-                // Načteme tipy pro aktuální týden seřazené od nejnovějších
-                const response = await fetch(`${SUPABASE_URL}/rest/v1/predictions?week_id=eq.${week_id}&select=username,price_prediction,created_at&order=created_at.desc`, {
+                // Načítáme VŠECHNY sloupce (*)
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/predictions?week_id=eq.${week_id}&select=*&order=created_at.desc`, {
                     headers: {
                         'apikey': SUPABASE_KEY,
                         'Authorization': `Bearer ${SUPABASE_KEY}`
@@ -316,22 +328,26 @@
                 if (response.ok) {
                     const predictions = await response.json();
                     
-                    // 1. Spočítáme bank (Prize Pool)
+                    // 1. Prize Pool
                     const totalSats = predictions.length * ENTRY_FEE_SATS;
                     document.getElementById('prize-pool').innerText = `${totalSats.toLocaleString()} Sats`;
 
-                    // 2. Vykreslíme tabulku
+                    // 2. Tabulka
                     const tbody = document.getElementById('predictions-table-body');
                     if (predictions.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="2" class="no-data">No predictions yet. Be the first! 🚀</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="4" class="no-data">No predictions yet. Be the first! 🚀</td></tr>';
                     } else {
                         tbody.innerHTML = predictions.map(p => `
                             <tr>
                                 <td><strong>${escapeHtml(p.username)}</strong></td>
                                 <td style="color: #238636; font-weight: bold;">$${Number(p.price_prediction).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                                <td><span class="btc-addr" title="${escapeHtml(p.btc_address)}">${formatBtcAddress(p.btc_address)}</span></td>
+                                <td style="color: #8b949e;">${p.email ? escapeHtml(p.email) : '-'}</td>
                             </tr>
                         `).join('');
                     }
+                } else {
+                    console.error("Supabase read error:", await response.text());
                 }
             } catch (error) {
                 console.error("Error loading predictions:", error);
@@ -339,6 +355,7 @@
         }
 
         function escapeHtml(text) {
+            if (!text) return '';
             return text.replace(/[&<>"']/g, function(m) {
                 return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
             });
@@ -447,7 +464,6 @@
                     alert('🎉 Payment confirmed & prediction locked in! Good luck! 🚀');
                     form.reset();
                     document.getElementById('payment-box').style.display = 'none';
-                    // Ihned obnovíme tabulku tipů a bank
                     fetchPredictionsAndPool();
                 } else {
                     const errorText = await response.text();
@@ -468,10 +484,9 @@
         fetchPredictionsAndPool();
         checkIfLocked();
         
-        // Intervaly
-        setInterval(fetchBitcoinPrice, 5000);
-        setInterval(updateCountdown, 1000);
         updateCountdown();
+        setInterval(updateCountdown, 1000);
+        setInterval(fetchBitcoinPrice, 5000);
     </script>
 </body>
 </html>
