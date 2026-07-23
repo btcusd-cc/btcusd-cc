@@ -125,11 +125,11 @@
             <input type="number" id="price_prediction" placeholder="Your BTC price prediction (USD)" step="0.01" required>
             <input type="text" id="btc_address" placeholder="Your BTC Address (for potential payout)" required>
             <input type="email" id="email" placeholder="Your Email (optional, for win notification)">
-            <button type="submit" id="submit-btn">Pay 100 Sats & Submit</button>
+            <button type="submit" id="submit-btn">Pay Entry Fee & Submit</button>
         </form>
 
         <div id="payment-box">
-            <h3>⚡ Pay Entry Fee (100 Sats)</h3>
+            <h3 id="payment-title">⚡ Pay Entry Fee</h3>
             <p style="font-size: 0.9rem; color: #8b949e;">Scan with Blink or any Lightning wallet to lock in your tip:</p>
             
             <img id="qrcode-img" src="" alt="Lightning QR Code" width="200" height="200">
@@ -140,13 +140,25 @@
     </div>
 
     <script>
+        // =========================================================
+        // ⚙️ HLAVNÍ NASTAVENÍ (ZDE MĚŇ HODNOTU V SATOSHI)
+        // =========================================================
+        const ENTRY_FEE_SATS = 100; // 👈 Změň toto číslo na libovolnou hodnotu!
+        const LIGHTNING_ADDRESS = "btcusdcc@blink.sv";
+        
         const SUPABASE_URL = "https://euizdmlikpncmqwkfmhn.supabase.co"; 
         const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1aXpkbWxpa3BuY21xd2tmbWhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNDkzMzksImV4cCI6MjA5OTYyNTMzOX0.QyaAWkMPOAd9cd0ZHifXCiuwGvPEQomO5yG30TzWFRA"; 
-        
-        const LIGHTNING_ADDRESS = "btcusdcc@blink.sv";
-        const ENTRY_FEE_SATS = 0;
 
         let paymentCheckInterval = null;
+
+        // Dynamické nastavení textů podle ceny v Satoshi
+        function updateUIWithSatoshiPrice() {
+            const submitBtn = document.getElementById('submit-btn');
+            const paymentTitle = document.getElementById('payment-title');
+            
+            if (submitBtn) submitBtn.innerText = `Pay ${ENTRY_FEE_SATS} Sats & Submit`;
+            if (paymentTitle) paymentTitle.innerText = `⚡ Pay Entry Fee (${ENTRY_FEE_SATS} Sats)`;
+        }
 
         function getWeekIdentifier() {
             const now = new Date();
@@ -197,7 +209,7 @@
             submitBtn.innerText = 'Generating Invoice...';
 
             try {
-                // 1. Získání LNURL parametrů z tvého Blinku
+                // 1. LNURL požadavek
                 const [user, domain] = LIGHTNING_ADDRESS.split("@");
                 const lnurlUrl = `https://${domain}/.well-known/lnurlp/${user}`;
                 
@@ -206,7 +218,7 @@
                 
                 const lnurlData = await res.json();
 
-                // 2. Vytvoření faktury na 100 Satoshi
+                // 2. Vytvoření faktury na dynamickou částku
                 const amountMSats = ENTRY_FEE_SATS * 1000;
                 const callbackUrl = `${lnurlData.callback}?amount=${amountMSats}`;
                 
@@ -217,14 +229,14 @@
 
                 if (!invoiceData.pr) throw new Error("No payment request returned");
 
-                // 3. Generování QR kódu přes spolehlivé Google API
+                // 3. Generování QR kódu
                 const qrImg = document.getElementById('qrcode-img');
                 qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(invoiceData.pr)}`;
 
                 paymentBox.style.display = 'block';
                 document.getElementById('payment-status').innerText = '⏳ Waiting for Lightning payment...';
 
-                // 4. Zapnutí kontroly na pozadí
+                // 4. Kontrola platby na pozadí
                 if (invoiceData.verify) {
                     startPaymentVerification(invoiceData.verify, event.target);
                 } else {
@@ -234,9 +246,9 @@
             } catch (error) {
                 console.error("Payment error:", error);
                 errorStatus.innerText = "Error generating QR: " + error.message;
-                alert("Failed to generate Lightning Invoice. Make sure your browser isn't blocking fetch requests.");
+                alert("Failed to generate Lightning Invoice.");
                 submitBtn.disabled = false;
-                submitBtn.innerText = 'Pay 100 Sats & Submit';
+                submitBtn.innerText = `Pay ${ENTRY_FEE_SATS} Sats & Submit`;
             }
         }
 
@@ -252,7 +264,6 @@
                         clearInterval(paymentCheckInterval);
                         document.getElementById('payment-status').innerText = '✅ Payment received! Saving prediction...';
                         
-                        // AŽ PO POTVRZENÍ PLATBY UKLÁDÁME DO DATABÁZE
                         await saveToSupabase(formElement);
                     }
                 } catch (e) {
@@ -302,11 +313,12 @@
             } finally {
                 const submitBtn = document.getElementById('submit-btn');
                 submitBtn.disabled = false;
-                submitBtn.innerText = 'Pay 100 Sats & Submit';
+                submitBtn.innerText = `Pay ${ENTRY_FEE_SATS} Sats & Submit`;
             }
         }
 
         // Init
+        updateUIWithSatoshiPrice();
         fetchBitcoinPrice();
         setInterval(fetchBitcoinPrice, 5000);
         checkIfLocked();
