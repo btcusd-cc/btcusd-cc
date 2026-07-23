@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BTCUSD.cc - Predict the Bitcoin Price</title>
-    <!-- Knihovna pro QR kód -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -81,7 +79,6 @@
             display: none;
         }
 
-        /* Nové styly pro Lightning QR Sekci */
         #payment-box {
             display: none;
             background: #161b22;
@@ -90,18 +87,21 @@
             padding: 20px;
             margin-top: 20px;
         }
-        #qrcode {
-            display: flex;
-            justify-content: center;
-            margin: 15px 0;
-            padding: 10px;
-            background: white;
+        #qrcode-img {
+            margin: 15px auto;
+            display: block;
+            border: 8px solid white;
             border-radius: 8px;
         }
         .pay-status {
             color: #238636;
             font-weight: bold;
             margin-top: 10px;
+        }
+        .error-msg {
+            color: #f85149;
+            margin-top: 10px;
+            font-size: 0.9rem;
         }
     </style>
 </head>
@@ -128,22 +128,23 @@
             <button type="submit" id="submit-btn">Pay 100 Sats & Submit</button>
         </form>
 
-        <!-- Zde se zobrazí QR kód pro zaplacení přes Blink -->
         <div id="payment-box">
             <h3>⚡ Pay Entry Fee (100 Sats)</h3>
             <p style="font-size: 0.9rem; color: #8b949e;">Scan with Blink or any Lightning wallet to lock in your tip:</p>
-            <div id="qrcode"></div>
+            
+            <img id="qrcode-img" src="" alt="Lightning QR Code" width="200" height="200">
+            
             <p class="pay-status" id="payment-status">⏳ Waiting for Lightning payment...</p>
+            <div class="error-msg" id="error-status"></div>
         </div>
     </div>
 
     <script>
-        // === NASTAVENÍ ===
         const SUPABASE_URL = "https://euizdmlikpncmqwkfmhn.supabase.co"; 
         const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1aXpkbWxpa3BuY21xd2tmbWhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNDkzMzksImV4cCI6MjA5OTYyNTMzOX0.QyaAWkMPOAd9cd0ZHifXCiuwGvPEQomO5yG30TzWFRA"; 
         
         const LIGHTNING_ADDRESS = "btcusdcc@blink.sv";
-        const ENTRY_FEE_SATS = 100; // Částka za podání jednoho tipu
+        const ENTRY_FEE_SATS = 100;
 
         let paymentCheckInterval = null;
 
@@ -184,56 +185,61 @@
             }
         }
 
-        // --- HODNOSTI DLAŽDICE BLINK LIGHTNING PAYMENT ---
         async function handlePredictionSubmit(event) {
             event.preventDefault();
             
             const submitBtn = document.getElementById('submit-btn');
+            const paymentBox = document.getElementById('payment-box');
+            const errorStatus = document.getElementById('error-status');
+            
+            errorStatus.innerText = "";
             submitBtn.disabled = true;
             submitBtn.innerText = 'Generating Invoice...';
 
             try {
-                // Generování faktury přes Blink LNURL
+                // 1. Získání LNURL parametrů z tvého Blinku
                 const [user, domain] = LIGHTNING_ADDRESS.split("@");
                 const lnurlUrl = `https://${domain}/.well-known/lnurlp/${user}`;
                 
                 const res = await fetch(lnurlUrl);
+                if (!res.ok) throw new Error("Could not reach Blink LNURL server");
+                
                 const lnurlData = await res.json();
 
+                // 2. Vytvoření faktury na 100 Satoshi
                 const amountMSats = ENTRY_FEE_SATS * 1000;
                 const callbackUrl = `${lnurlData.callback}?amount=${amountMSats}`;
                 
                 const invoiceRes = await fetch(callbackUrl);
+                if (!invoiceRes.ok) throw new Error("Could not request invoice from Blink");
+                
                 const invoiceData = await invoiceRes.json();
 
-                if (!invoiceData.pr) throw new Error("Invoice creation failed");
+                if (!invoiceData.pr) throw new Error("No payment request returned");
 
-                // Zobrazení QR kódu
-                const qrcodeContainer = document.getElementById('qrcode');
-                qrcodeContainer.innerHTML = "";
-                new QRCode(qrcodeContainer, {
-                    text: invoiceData.pr,
-                    width: 200,
-                    height: 200
-                });
+                // 3. Generování QR kódu přes spolehlivé Google API
+                const qrImg = document.getElementById('qrcode-img');
+                qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(invoiceData.pr)}`;
 
-                document.getElementById('payment-box').style.display = 'block';
+                paymentBox.style.display = 'block';
                 document.getElementById('payment-status').innerText = '⏳ Waiting for Lightning payment...';
 
-                // Spustíme kontrolu platby
+                // 4. Zapnutí kontroly na pozadí
                 if (invoiceData.verify) {
                     startPaymentVerification(invoiceData.verify, event.target);
+                } else {
+                    errorStatus.innerText = "Warning: Verification link not provided by wallet.";
                 }
 
             } catch (error) {
                 console.error("Payment error:", error);
-                alert("Failed to generate Lightning Invoice. Please try again.");
+                errorStatus.innerText = "Error generating QR: " + error.message;
+                alert("Failed to generate Lightning Invoice. Make sure your browser isn't blocking fetch requests.");
                 submitBtn.disabled = false;
                 submitBtn.innerText = 'Pay 100 Sats & Submit';
             }
         }
 
-        // Kontrola zda už uživatel fakturu zaplatil
         function startPaymentVerification(verifyUrl, formElement) {
             if (paymentCheckInterval) clearInterval(paymentCheckInterval);
 
@@ -246,21 +252,20 @@
                         clearInterval(paymentCheckInterval);
                         document.getElementById('payment-status').innerText = '✅ Payment received! Saving prediction...';
                         
-                        // Po zaplacení pošleme data do Supabase
+                        // AŽ PO POTVRZENÍ PLATBY UKLÁDÁME DO DATABÁZE
                         await saveToSupabase(formElement);
                     }
                 } catch (e) {
                     // Čekáme na zaplacení...
                 }
-            }, 2500); // Kontrola každé 2.5 sekundy
+            }, 2500);
         }
 
-        // Odeslání do Supabase až po úspěšné platbě
         async function saveToSupabase(form) {
-            const username = form.querySelector('input[placeholder*="Nickname"]').value;
-            const predictionValue = form.querySelector('input[type="number"]').value;
-            const btc_address = form.querySelector('input[placeholder*="BTC Address"]').value;
-            const emailInput = form.querySelector('input[type="email"]');
+            const username = form.querySelector('#username').value;
+            const predictionValue = form.querySelector('#price_prediction').value;
+            const btc_address = form.querySelector('#btc_address').value;
+            const emailInput = form.querySelector('#email');
             const email = emailInput && emailInput.value ? emailInput.value : null;
             const week_id = getWeekIdentifier();
 
