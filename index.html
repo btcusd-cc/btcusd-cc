@@ -125,12 +125,12 @@
             <input type="number" id="price_prediction" placeholder="Your BTC price prediction (USD)" step="0.01" required>
             <input type="text" id="btc_address" placeholder="Your BTC Address (for potential payout)" required>
             <input type="email" id="email" placeholder="Your Email (optional, for win notification)">
-            <button type="submit" id="submit-btn">Pay Entry Fee & Submit</button>
+            <button type="submit" id="submit-btn">Loading fee...</button>
         </form>
 
         <div id="payment-box">
             <h3 id="payment-title">⚡ Pay Entry Fee</h3>
-            <p style="font-size: 0.9rem; color: #8b949e;">Scan with Blink or any Lightning wallet to lock in your tip:</p>
+            <p id="payment-desc" style="font-size: 0.9rem; color: #8b949e;">Scan with Blink or any Lightning wallet to lock in your tip:</p>
             
             <img id="qrcode-img" src="" alt="Lightning QR Code" width="200" height="200">
             
@@ -141,23 +141,25 @@
 
     <script>
         // =========================================================
-        // ⚙️ HLAVNÍ NASTAVENÍ (ZDE MĚŇ HODNOTU V SATOSHI)
+        // ⚙️ HLAVNÍ NASTAVENÍ (MĚŇ POUZE TOTO ČÍSLO)
         // =========================================================
-        const ENTRY_FEE_SATS = 23; // 👈 Změň toto číslo na libovolnou hodnotu!
-        const LIGHTNING_ADDRESS = "btcusdcc@blink.sv";
+        const ENTRY_FEE_SATS = 100; // 👈 Změň toto číslo na libovolnou hodnotu!
         
+        const LIGHTNING_ADDRESS = "btcusdcc@blink.sv";
         const SUPABASE_URL = "https://euizdmlikpncmqwkfmhn.supabase.co"; 
         const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1aXpkbWxpa3BuY21xd2tmbWhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNDkzMzksImV4cCI6MjA5OTYyNTMzOX0.QyaAWkMPOAd9cd0ZHifXCiuwGvPEQomO5yG30TzWFRA"; 
 
         let paymentCheckInterval = null;
 
-        // Dynamické nastavení textů podle ceny v Satoshi
+        // Automatická aktualizace všech textů na stránce podle nastavené ceny
         function updateUIWithSatoshiPrice() {
             const submitBtn = document.getElementById('submit-btn');
             const paymentTitle = document.getElementById('payment-title');
+            const paymentDesc = document.getElementById('payment-desc');
             
             if (submitBtn) submitBtn.innerText = `Pay ${ENTRY_FEE_SATS} Sats & Submit`;
             if (paymentTitle) paymentTitle.innerText = `⚡ Pay Entry Fee (${ENTRY_FEE_SATS} Sats)`;
+            if (paymentDesc) paymentDesc.innerText = `Scan with Blink or any Lightning wallet to pay ${ENTRY_FEE_SATS} Sats:`;
         }
 
         function getWeekIdentifier() {
