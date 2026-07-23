@@ -15,15 +15,53 @@
             justify-content: center;
             min-height: 100vh;
             margin: 0;
-            padding: 20px 0;
+            padding: 0 0 20px 0;
             text-align: center;
         }
+
+        /* Banner testovacího provozu */
+        .test-banner {
+            width: 100%;
+            background-color: #d97706; /* Výrazná oranžová / jantarová */
+            color: #ffffff;
+            padding: 10px 15px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            box-sizing: border-box;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+            z-index: 1000;
+        }
+        .test-banner span.badge {
+            background: #ffffff;
+            color: #d97706;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .close-banner-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0 5px;
+            line-height: 1;
+            position: absolute;
+            right: 15px;
+        }
+
         .container {
-            max-width: 750px; /* Rozšířeno pro širší tabulku s datem */
+            max-width: 750px;
             padding: 20px;
             width: 90%;
         }
-        h1 { color: #f2a900; font-size: 2.5rem; margin-bottom: 5px; }
+        h1 { color: #f2a900; font-size: 2.5rem; margin-bottom: 5px; margin-top: 10px; }
         p.subtitle { color: #8b949e; font-size: 1.1rem; line-height: 1.5; margin-bottom: 20px; }
         
         .stats-grid {
@@ -149,6 +187,15 @@
     </style>
 </head>
 <body>
+
+    <!-- Testovací Banner na vrchu stránky -->
+    <div class="test-banner" id="test-banner">
+        <div>
+            <span class="badge">Testnet / Beta</span>
+            ⚠️ This site is currently under testing mode. Predictions and payments are not fully live yet!
+        </div>
+        <button class="close-banner-btn" onclick="document.getElementById('test-banner').style.display='none'" title="Close banner">✕</button>
+    </div>
 
     <div class="container">
         <h1>BTCUSD.cc</h1>
@@ -312,7 +359,6 @@
             return `${addr.substring(0, 6)}...${addr.substring(addr.length - 6)}`;
         }
 
-        // Pomocná funkce pro převedení času ze Supabase na formát DD.MM.YYYY, HH:MM:SS
         function formatDateTime(isoString) {
             if (!isoString) return '-';
             const date = new Date(isoString);
