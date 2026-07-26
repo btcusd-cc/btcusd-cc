@@ -26,7 +26,11 @@ async function supabaseFetch(endpoint, options = {}) {
         const text = await response.text();
         throw new Error(`Supabase API Error (${response.status}): ${text}`);
     }
-    return response.status !== 204 ? await response.json() : null;
+    
+    // Bezpečné načtení textu z odpovědi
+    const text = await response.text();
+    // Pokud je odpověď prázdná (např. při uložení do databáze), vrátíme null místo chyby
+    return text ? JSON.parse(text) : null;
 }
 
 // Pomocná funkce pro identickou kalkulaci week_id jako v index.html
