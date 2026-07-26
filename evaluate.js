@@ -87,8 +87,14 @@ async function evaluateWeek(weekId) {
     // 1. Získání finální zavírací ceny BTC výhradně z Binance API
     console.log("📡 Načítám oficiální cenu BTCUSDT z Binance...");
     
-    const btcRes = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+    let btcRes = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
     
+    // Pokud GitHub runner dostane geoblock (HTTP 451/403), použijeme Binance US endpoint
+    if (btcRes.status === 451 || btcRes.status === 403) {
+        console.log("⚠️ Globální Binance endpoint vrátil geoblock. Načítám z Binance US...");
+        btcRes = await fetch('https://api.binance.us/api/v3/ticker/price?symbol=BTCUSDT');
+    }
+
     if (!btcRes.ok) {
         throw new Error(`❌ Chyba Binance API: Odpověď serveru ${btcRes.status} ${btcRes.statusText}`);
     }
@@ -102,7 +108,7 @@ async function evaluateWeek(weekId) {
     }
 
     console.log(`📌 Oficiální cena BTC (Binance BTCUSDT): $${finalBtcPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
-    
+
     // 2. Načtení všech tipů pro daný týden
     const predictions = await supabaseFetch(`predictions?week_id=eq.${weekId}&select=*`);
 
