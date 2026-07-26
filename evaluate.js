@@ -84,13 +84,25 @@ async function lockWeek(weekId) {
 async function evaluateWeek(weekId) {
     console.log(`🏆 Spouštím vyhodnocení pro týden: "${weekId}"...`);
 
-    // 1. Získání finální zavírací ceny BTC z Binance API
+    // 1. Získání finální zavírací ceny BTC výhradně z Binance API
+    console.log("📡 Načítám oficiální cenu BTCUSDT z Binance...");
+    
     const btcRes = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+    
+    if (!btcRes.ok) {
+        throw new Error(`❌ Chyba Binance API: Odpověď serveru ${btcRes.status} ${btcRes.statusText}`);
+    }
+
     const btcData = await btcRes.json();
-    const finalBtcPrice = parseFloat(btcData.price);
+    const rawPrice = btcData && btcData.price;
+    const finalBtcPrice = Number(rawPrice);
 
-    console.log(`📌 Finální cena BTC podle Binance: $${finalBtcPrice.toLocaleString('en-US', {minimumFractionDigits: 2})}`);
+    if (!rawPrice || isNaN(finalBtcPrice)) {
+        throw new Error(`❌ Binance API vrátilo neplatný formát ceny: "${rawPrice}"`);
+    }
 
+    console.log(`📌 Oficiální cena BTC (Binance BTCUSDT): $${finalBtcPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+    
     // 2. Načtení všech tipů pro daný týden
     const predictions = await supabaseFetch(`predictions?week_id=eq.${weekId}&select=*`);
 
