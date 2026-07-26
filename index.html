@@ -22,7 +22,7 @@
         /* Banner testovacího provozu */
         .test-banner {
             width: 100%;
-            background-color: #d97706; /* Výrazná oranžová / jantarová */
+            background-color: #d97706;
             color: #ffffff;
             padding: 10px 15px;
             font-size: 0.9rem;
@@ -124,6 +124,17 @@
         button:hover { transform: scale(1.02); }
         button:disabled { background-color: #30363d; color: #8b949e; cursor: not-allowed; }
         
+        .fee-badge {
+            font-size: 0.85rem;
+            color: #f2a900;
+            margin-top: -5px;
+            font-weight: 500;
+            background: rgba(242, 169, 0, 0.1);
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px dashed rgba(242, 169, 0, 0.3);
+        }
+
         .locked-message {
             background: #211b16;
             border: 1px solid #f2a900;
@@ -152,7 +163,6 @@
         .pay-status { color: #238636; font-weight: bold; margin-top: 10px; }
         .error-msg { color: #f85149; margin-top: 10px; font-size: 0.9rem; }
 
-        /* Styly pro tabulku tipů */
         .leaderboard-box {
             background: #161b22;
             border: 1px solid #30363d;
@@ -188,7 +198,6 @@
 </head>
 <body>
 
-    <!-- Testovací Banner na vrchu stránky -->
     <div class="test-banner" id="test-banner">
         <div>
             <span class="badge">Testnet / Beta</span>
@@ -226,6 +235,11 @@
             <input type="number" id="price_prediction" placeholder="Your BTC price prediction (USD)" step="0.01" required>
             <input type="text" id="btc_address" placeholder="Your BTC Address (for potential payout)" required>
             <input type="email" id="email" placeholder="Your Email (optional, for win notification)">
+            
+            <div id="fee-notice-badge" class="fee-badge">
+                Calculating current entry fee...
+            </div>
+
             <button type="submit" id="submit-btn">Loading fee...</button>
         </form>
 
@@ -259,25 +273,50 @@
     </div>
 
     <script>
-        // =========================================================
-        // ⚙️ HLAVNÍ NASTAVENÍ
-        // =========================================================
-        const ENTRY_FEE_SATS = 100; 
-        
         const LIGHTNING_ADDRESS = "btcusdcc@blink.sv";
         const SUPABASE_URL = "https://euizdmlikpncmqwkfmhn.supabase.co"; 
         const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1aXpkbWxpa3BuY21xd2tmbWhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNDkzMzksImV4cCI6MjA5OTYyNTMzOX0.QyaAWkMPOAd9cd0ZHifXCiuwGvPEQomO5yG30TzWFRA"; 
 
         let paymentCheckInterval = null;
+        let currentBtcPriceUsd = 0; // Ukládáme živou cenu BTC pro přepočet
 
+        // 1. Získání ceny v USD ($1 až $5) podle dne v týdnu
+        function getCurrentFeeUsd() {
+            const now = new Date();
+            const day = now.getUTCDay(); // 0 = Neděle, 1 = Pondělí, ..., 5 = Pátek, 6 = Sobota
+
+            switch(day) {
+                case 1: return { usd: 1.00, tier: "Monday Super Early 🐣" };
+                case 2: return { usd: 2.00, tier: "Tuesday Early Bird 🐥" };
+                case 3: return { usd: 3.00, tier: "Wednesday Mid-Week ⏳" };
+                case 4: return { usd: 4.00, tier: "Thursday Late Tier 📈" };
+                case 5: return { usd: 5.00, tier: "Friday Last Minute 🔥" };
+                default: return { usd: 5.00, tier: "Weekend Locked 🔒" };
+            }
+        }
+
+        // 2. Přepočet USD na Satoshis podle aktuálního kurzu BTC
+        function calculateSatsFromUsd(usdAmount) {
+            if (!currentBtcPriceUsd || currentBtcPriceUsd <= 0) return 1000; // Fallback
+            // (Cena v USD / BTC cena v USD) * 100 000 000 Sats
+            const sats = Math.round((usdAmount / currentBtcPriceUsd) * 100000000);
+            return sats;
+        }
+
+        // 3. Aktualizace UI prvků s přepočítanou cenou v USD i Sats
         function updateUIWithSatoshiPrice() {
-            const submitBtn = document.getElementById('submit-btn');
-            const paymentTitle = document.getElementById('payment-title');
-            const paymentDesc = document.getElementById('payment-desc');
+            const feeInfo = getCurrentFeeUsd();
+            const satsAmount = calculateSatsFromUsd(feeInfo.usd);
             
-            if (submitBtn) submitBtn.innerText = `Pay ${ENTRY_FEE_SATS} Sats & Submit`;
-            if (paymentTitle) paymentTitle.innerText = `⚡ Pay Entry Fee (${ENTRY_FEE_SATS} Sats)`;
-            if (paymentDesc) paymentDesc.innerText = `Scan with Blink or any Lightning wallet to pay ${ENTRY_FEE_SATS} Sats:`;
+            const submitBtn = document.getElementById('submit-btn');
+            const feeNotice = document.getElementById('fee-notice-badge');
+            
+            if (submitBtn) {
+                submitBtn.innerText = `Pay $${feeInfo.usd.toFixed(2)} (~${satsAmount.toLocaleString()} Sats) & Submit`;
+            }
+            if (feeNotice) {
+                feeNotice.innerText = `💡 Today's Fee: $${feeInfo.usd.toFixed(2)} (~${satsAmount.toLocaleString()} Sats) — ${feeInfo.tier}. Early entries save up to $4!`;
+            }
         }
 
         function getWeekIdentifier() {
@@ -346,8 +385,12 @@
             try {
                 const response = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
                 const data = await response.json();
-                const price = parseFloat(data.price).toFixed(2);
-                document.getElementById('btc-price').innerText = '$' + Number(price).toLocaleString('en-US', {minimumFractionDigits: 2});
+                currentBtcPriceUsd = parseFloat(data.price);
+                
+                document.getElementById('btc-price').innerText = '$' + currentBtcPriceUsd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                
+                // Po načtení ceny aktualizujeme přepočet v tlačítku
+                updateUIWithSatoshiPrice();
             } catch (error) {
                 document.getElementById('btc-price').innerText = 'Error loading price';
             }
@@ -372,7 +415,6 @@
             });
         }
 
-        // --- NAČÍTÁNÍ TABULKY TIPŮ A VÝPOČET BANKU ---
         async function fetchPredictionsAndPool() {
             const week_id = getWeekIdentifier();
             document.getElementById('leaderboard-title').innerText = `📊 Current Week Predictions (${week_id})`;
@@ -388,11 +430,10 @@
                 if (response.ok) {
                     const predictions = await response.json();
                     
-                    // 1. Prize Pool
-                    const totalSats = predictions.length * ENTRY_FEE_SATS;
+                    // Výpočet celkového banku ze sloupce entry_fee
+                    const totalSats = predictions.reduce((sum, p) => sum + (p.entry_fee || 1000), 0);
                     document.getElementById('prize-pool').innerText = `${totalSats.toLocaleString()} Sats`;
 
-                    // 2. Tabulka
                     const tbody = document.getElementById('predictions-table-body');
                     if (predictions.length === 0) {
                         tbody.innerHTML = '<tr><td colspan="5" class="no-data">No predictions yet. Be the first! 🚀</td></tr>';
@@ -407,8 +448,6 @@
                             </tr>
                         `).join('');
                     }
-                } else {
-                    console.error("Supabase read error:", await response.text());
                 }
             } catch (error) {
                 console.error("Error loading predictions:", error);
@@ -425,6 +464,9 @@
         async function handlePredictionSubmit(event) {
             event.preventDefault();
             
+            const feeInfo = getCurrentFeeUsd();
+            const satsAmount = calculateSatsFromUsd(feeInfo.usd);
+
             const submitBtn = document.getElementById('submit-btn');
             const paymentBox = document.getElementById('payment-box');
             const errorStatus = document.getElementById('error-status');
@@ -442,26 +484,25 @@
                 
                 const lnurlData = await res.json();
 
-                const amountMSats = ENTRY_FEE_SATS * 1000;
+                const amountMSats = satsAmount * 1000;
                 const callbackUrl = `${lnurlData.callback}?amount=${amountMSats}`;
                 
                 const invoiceRes = await fetch(callbackUrl);
                 if (!invoiceRes.ok) throw new Error("Could not request invoice from Blink");
                 
                 const invoiceData = await invoiceRes.json();
-
                 if (!invoiceData.pr) throw new Error("No payment request returned");
 
                 const qrImg = document.getElementById('qrcode-img');
                 qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(invoiceData.pr)}`;
 
                 paymentBox.style.display = 'block';
-                document.getElementById('payment-status').innerText = '⏳ Waiting for Lightning payment...';
+                document.getElementById('payment-title').innerText = `⚡ Pay Entry Fee ($${feeInfo.usd.toFixed(2)})`;
+                document.getElementById('payment-desc').innerText = `Scan with Blink or any Lightning wallet to pay ${satsAmount.toLocaleString()} Sats ($${feeInfo.usd.toFixed(2)}):`;
+                document.getElementById('payment-status').innerText = `⏳ Waiting for ${satsAmount.toLocaleString()} Sats payment...`;
 
                 if (invoiceData.verify) {
-                    startPaymentVerification(invoiceData.verify, event.target);
-                } else {
-                    errorStatus.innerText = "Warning: Verification link not provided by wallet.";
+                    startPaymentVerification(invoiceData.verify, event.target, satsAmount);
                 }
 
             } catch (error) {
@@ -469,11 +510,11 @@
                 errorStatus.innerText = "Error generating QR: " + error.message;
                 alert("Failed to generate Lightning Invoice.");
                 submitBtn.disabled = false;
-                submitBtn.innerText = `Pay ${ENTRY_FEE_SATS} Sats & Submit`;
+                updateUIWithSatoshiPrice();
             }
         }
 
-        function startPaymentVerification(verifyUrl, formElement) {
+        function startPaymentVerification(verifyUrl, formElement, paidSats) {
             if (paymentCheckInterval) clearInterval(paymentCheckInterval);
 
             paymentCheckInterval = setInterval(async () => {
@@ -485,15 +526,15 @@
                         clearInterval(paymentCheckInterval);
                         document.getElementById('payment-status').innerText = '✅ Payment received! Saving prediction...';
                         
-                        await saveToSupabase(formElement);
+                        await saveToSupabase(formElement, paidSats);
                     }
                 } catch (e) {
-                    // Čekáme...
+                    // Čekáme na zaplacení...
                 }
             }, 2500);
         }
 
-        async function saveToSupabase(form) {
+        async function saveToSupabase(form, paidSats) {
             const username = form.querySelector('#username').value;
             const predictionValue = form.querySelector('#price_prediction').value;
             const btc_address = form.querySelector('#btc_address').value;
@@ -506,7 +547,8 @@
                 price_prediction: parseFloat(predictionValue),
                 btc_address: btc_address,
                 email: email,
-                week_id: week_id
+                week_id: week_id,
+                entry_fee: paidSats
             };
 
             try {
@@ -535,12 +577,11 @@
             } finally {
                 const submitBtn = document.getElementById('submit-btn');
                 submitBtn.disabled = false;
-                submitBtn.innerText = `Pay ${ENTRY_FEE_SATS} Sats & Submit`;
+                updateUIWithSatoshiPrice();
             }
         }
 
         // --- INICIALIZACE ---
-        updateUIWithSatoshiPrice();
         fetchBitcoinPrice();
         fetchPredictionsAndPool();
         checkIfLocked();
