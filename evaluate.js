@@ -3,7 +3,7 @@ const crypto = require('crypto');
 
 // Konfigurace Supabase z proměnných prostředí nebo fallback
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://euizdmlikpncmqwkfmhn.supabase.co";
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || "TVUJ_SUPABASE_SERVICE_ROLE_KEY";
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1aXpkbWxpa3BuY21xd2tmbWhuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NDA0OTMzOSwiZXhwIjoyMDk5NjI1MzM5fQ.LcConn3D37unzte6j6MrBhIKPeh5XQFT87n2UohNE8k";
 
 // Pomocná funkce pro Supabase REST API
 async function supabaseFetch(endpoint, options = {}) {
