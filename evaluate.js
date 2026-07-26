@@ -1,8 +1,15 @@
 // evaluate.js
 const crypto = require('crypto');
 
-// Konfigurace Supabase z proměnných prostředí nebo fallback
-const SUPABASE_URL = process.env.SUPABASE_URL || "https://euizdmlikpncmqwkfmhn.supabase.co";
+// Ošetření načtení Supabase URL a KEY
+const DEFAULT_URL = "https://euizdmlikpncmqwkfmhn.supabase.co";
+let rawUrl = process.env.SUPABASE_URL || DEFAULT_URL;
+
+// Odstranění případných uvozovek nebo bílých znaků z ENV proměnné
+if (!rawUrl.startsWith('http')) {
+    rawUrl = DEFAULT_URL;
+}
+const SUPABASE_URL = rawUrl.replace(/\/$/, ""); // Odstraní případné lomítko na konci
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1aXpkbWxpa3BuY21xd2tmbWhuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NDA0OTMzOSwiZXhwIjoyMDk5NjI1MzM5fQ.LcConn3D37unzte6j6MrBhIKPeh5XQFT87n2UohNE8k";
 
 // Pomocná funkce pro Supabase REST API
