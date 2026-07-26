@@ -1,0 +1,50 @@
+name: Evaluate Weekly BTC Predictions
+
+on:
+  schedule:
+    # 1. Pátek 23:00 UTC (Zamknutí & SHA-256 Hash)
+    - cron: '0 23 * * 5'
+    # 2. Neděle 23:59 UTC (Vyhodnocení vítězů & Cena BTC)
+    - cron: '59 23 * * 0'
+  # Umožní spustit skript i ručně z rozhraní GitHubu pro testování
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to run (lock or evaluate)'
+        required: true
+        default: 'lock'
+        type: choice
+        options:
+          - lock
+          - evaluate
+
+jobs:
+  run-evaluation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Determine Action Type
+        id: action-type
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "ACTION=${{ inputs.action }}" >> $GITHUB_ENV
+          elif [ "$(date -u +%u)" = "5" ]; then
+            echo "ACTION=lock" >> $GITHUB_ENV
+          else
+            echo "ACTION=evaluate" >> $GITHUB_ENV
+          fi
+
+      - name: Execute Evaluation Script
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          node evaluate.js --action=$ACTION
