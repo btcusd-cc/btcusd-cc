@@ -319,12 +319,14 @@
             }
         }
 
-        function getWeekIdentifier() {
-            const now = new Date();
-            const oneJan = new Date(now.getFullYear(), 0, 1);
-            const numberOfDays = Math.floor((now - oneJan) / (24 * 60 * 60 * 1000));
-            const weekNumber = Math.ceil((now.getDay() + 1 + numberOfDays) / 7);
-            return `${now.getFullYear()}-W${weekNumber}`;
+        function getWeekIdentifier(d = new Date()) {
+            const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+            const dayNum = date.getUTCDay() || 7;
+            date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+            const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+            const formattedWeek = weekNo < 10 ? `0${weekNo}` : weekNo;
+            return `${date.getUTCFullYear()}-W${formattedWeek}`;
         }
 
         function updateCountdown() {
