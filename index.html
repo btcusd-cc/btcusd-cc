@@ -253,6 +253,7 @@
             <div class="error-msg" id="error-status"></div>
         </div>
 
+        <!-- TABULKA AKTUÁLNÍCH TIPŮ -->
         <div class="leaderboard-box">
             <h3 id="leaderboard-title">📊 Current Week Predictions</h3>
             <table>
@@ -267,6 +268,25 @@
                 </thead>
                 <tbody id="predictions-table-body">
                     <tr><td colspan="5" class="no-data">Loading predictions...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 🏆 NOVÁ SEKCE: HISTORIE VÍTĚZŮ -->
+        <div class="leaderboard-box" style="margin-top: 25px;">
+            <h3>🏆 Past Winners & Hall of Fame</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Week</th>
+                        <th>Final BTC Price</th>
+                        <th>Winner</th>
+                        <th>Winning Prediction</th>
+                        <th>Prize Won</th>
+                    </tr>
+                </thead>
+                <tbody id="winners-table-body">
+                    <tr><td colspan="5" class="no-data">Loading past winners...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -583,9 +603,78 @@
             }
         }
 
+        async function fetchWinnersHistory() {
+            try {
+                // Načteme vyhodnocené týdny a spojíme s tabulkou winners
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/weeks?status=eq.EVALUATED&select=week_id,final_btc_price,total_pool_sats,winners(username,payout_sats,prediction_id)&order=week_id.desc`, {
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`
+                    }
+                });
+
+                if (response.ok) {
+                    const evaluatedWeeks = await response.json();
+                    const tbody = document.getElementById('winners-table-body');
+
+                    if (!evaluatedWeeks || evaluatedWeeks.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" class="no-data">No completed rounds yet. First winner coming soon! 🚀</td></tr>';
+                        return;
+                    }
+
+                    // Načteme z databáze i samotné tipy, abychom zobrazeným vítězům vytáhli jejich přesný predikovaný tip
+                    const predictionsRes = await fetch(`${SUPABASE_URL}/rest/v1/predictions?select=id,price_prediction`, {
+                        headers: {
+                            'apikey': SUPABASE_KEY,
+                            'Authorization': `Bearer ${SUPABASE_KEY}`
+                        }
+                    });
+                    const predictionsData = predictionsRes.ok ? await predictionsRes.json() : [];
+                    const predictionsMap = new Map(predictionsData.map(p => [p.id, p.price_prediction]));
+
+                    let rowsHtml = '';
+
+                    evaluatedWeeks.forEach(w => {
+                        const finalPrice = w.final_btc_price ? `$${Number(w.final_btc_price).toLocaleString('en-US', {minimumFractionDigits: 2})}` : 'N/A';
+                        
+                        if (!w.winners || w.winners.length === 0) {
+                            rowsHtml += `
+                                <tr>
+                                    <td><strong>${escapeHtml(w.week_id)}</strong></td>
+                                    <td style="color: #238636; font-weight: bold;">${finalPrice}</td>
+                                    <td colspan="3" class="no-data" style="text-align: left;">No entries in this round</td>
+                                </tr>
+                            `;
+                        } else {
+                            w.winners.forEach(winner => {
+                                const predictedPriceVal = predictionsMap.get(winner.prediction_id);
+                                const predictedPrice = predictedPriceVal ? `$${Number(predictedPriceVal).toLocaleString('en-US', {minimumFractionDigits: 2})}` : '-';
+                                const payout = winner.payout_sats ? `${Number(winner.payout_sats).toLocaleString()} Sats` : '-';
+
+                                rowsHtml += `
+                                    <tr>
+                                        <td><strong>${escapeHtml(w.week_id)}</strong></td>
+                                        <td style="color: #238636; font-weight: bold;">${finalPrice}</td>
+                                        <td><strong>👑 ${escapeHtml(winner.username)}</strong></td>
+                                        <td style="color: #f2a900;">${predictedPrice}</td>
+                                        <td style="color: #f2a900; font-weight: bold;">⚡ ${payout}</td>
+                                    </tr>
+                                `;
+                            });
+                        }
+                    });
+
+                    tbody.innerHTML = rowsHtml;
+                }
+            } catch (error) {
+                console.error("Error loading winners history:", error);
+            }
+        }
+
         // --- INICIALIZACE ---
         fetchBitcoinPrice();
         fetchPredictionsAndPool();
+        fetchWinnersHistory();
         checkIfLocked();
         
         updateCountdown();
