@@ -10,7 +10,11 @@ if (!rawUrl.startsWith('http')) {
     rawUrl = DEFAULT_URL;
 }
 const SUPABASE_URL = rawUrl.replace(/\/$/, ""); // Odstraní případné lomítko na konci
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1aXpkbWxpa3BuY21xd2tmbWhuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NDA0OTMzOSwiZXhwIjoyMDk5NjI1MzM5fQ.LcConn3D37unzte6j6MrBhIKPeh5XQFT87n2UohNE8k";
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+
+if (!SUPABASE_KEY) {
+    throw new Error("❌ Chybí SUPABASE_SERVICE_ROLE_KEY v proměnných prostředí (Secrets)!");
+}
 
 // Pomocná funkce pro Supabase REST API
 async function supabaseFetch(endpoint, options = {}) {
