@@ -5,11 +5,10 @@ const crypto = require('crypto');
 const DEFAULT_URL = "https://euizdmlikpncmqwkfmhn.supabase.co";
 let rawUrl = process.env.SUPABASE_URL || DEFAULT_URL;
 
-// Odstranění případných uvozovek nebo bílých znaků z ENV proměnné
 if (!rawUrl.startsWith('http')) {
     rawUrl = DEFAULT_URL;
 }
-const SUPABASE_URL = rawUrl.replace(/\/$/, ""); // Odstraní případné lomítko na konci
+const SUPABASE_URL = rawUrl.replace(/\/$/, ""); 
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
 
 if (!SUPABASE_KEY) {
@@ -31,25 +30,66 @@ async function supabaseFetch(endpoint, options = {}) {
         throw new Error(`Supabase API Error (${response.status}): ${text}`);
     }
     
-    // Bezpečné načtení textu z odpovědi
     const text = await response.text();
-    // Pokud je odpověď prázdná (např. při uložení do databáze), vrátíme null místo chyby
     return text ? JSON.parse(text) : null;
 }
 
-// Pomocná funkce pro identickou kalkulaci week_id jako v index.html
-function getWeekIdentifier(date = new Date()) {
-    const oneJan = new Date(date.getFullYear(), 0, 1);
-    const numberOfDays = Math.floor((date - oneJan) / (24 * 60 * 60 * 1000));
-    const weekNumber = Math.ceil((date.getDay() + 1 + numberOfDays) / 7);
-    return `${date.getFullYear()}-W${weekNumber}`;
+// ISO-8601 výpočet týdne (Pondělí = začátek týdne, 2-místný kód týdne)
+function getWeekIdentifier(d = new Date()) {
+    const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    const dayNum = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+    const formattedWeek = weekNo < 10 ? `0${weekNo}` : weekNo;
+    return `${date.getUTCFullYear()}-W${formattedWeek}`;
+}
+
+// Pomocná funkce pro získání historické zavírací ceny z Binance k nedělní půlnoci (23:59:59 UTC)
+async function getSundayClosePrice() {
+    console.log("📡 Načítám historickou nedělní zavírací cenu BTC z Binance (K-Lines API)...");
+    
+    // Zjistíme UTC timestamp pro nedělní 23:59:59 (konec aktuálního/proběhlého ISO týdne)
+    const now = new Date();
+    const currentDay = now.getUTCDay(); // 0 = Neděle, 1 = Pondělí...
+    const daysSinceSunday = currentDay === 0 ? 0 : currentDay;
+    
+    const targetSunday = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() - daysSinceSunday,
+        23, 59, 59, 999
+    ));
+
+    const endTime = targetSunday.getTime();
+    
+    // Dotaz na 1m svíčku končící v neděli ve 23:59:59 UTC
+    const endpoint = `api/v3/klines?symbol=BTCUSDT&interval=1m&endTime=${endTime}&limit=1`;
+    
+    let res = await fetch(`https://api.binance.com/${endpoint}`);
+    if (res.status === 451 || res.status === 403) {
+        console.log("⚠️ Globální Binance endpoint vrátil geoblock. Přepínám na Binance US...");
+        res = await fetch(`https://api.binance.us/${endpoint}`);
+    }
+
+    if (!res.ok) {
+        throw new Error(`❌ Chyba Binance API: Odpověď serveru ${res.status} ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    if (!data || data.length === 0) {
+        throw new Error("❌ Z Binance se nepodařilo načíst historickou svíčku pro nedělní půlnoc.");
+    }
+
+    // Index 4 v Binance Klines poli reprezentuje 'Close price' (zavírací cenu) svíčky
+    const closePrice = parseFloat(data[0][4]);
+    return closePrice;
 }
 
 // 1. FÁZE: Zamknutí a generování SHA-256 Hashe (Pátek 23:00 UTC)
 async function lockWeek(weekId) {
     console.log(`🔍 Hledám tipy v Supabase pro týden: "${weekId}"...`);
 
-    // Stáhneme všechny tipy pro daný týden
     const predictions = await supabaseFetch(`predictions?week_id=eq.${weekId}&select=id,username,price_prediction,btc_address,created_at&order=id.asc`);
 
     console.log(`📦 Nalezeno záznamů v predictions: ${predictions ? predictions.length : 0}`);
@@ -59,17 +99,14 @@ async function lockWeek(weekId) {
         return;
     }
 
-    // Vytvoříme deterministický řetězec z dat tipů
     const rawDataString = JSON.stringify(predictions);
     const hash = crypto.createHash('sha256').update(rawDataString).digest('hex');
 
     console.log(`✅ SHA-256 Hash vygenerován: ${hash}`);
 
-    // Spočítáme celkový bank
     const fullPredictions = await supabaseFetch(`predictions?week_id=eq.${weekId}&select=entry_fee`);
     const totalPool = fullPredictions.reduce((sum, p) => sum + (p.entry_fee || 1000), 0);
 
-    // Uložíme do tabulky weeks
     await supabaseFetch(`weeks`, {
         method: 'POST',
         headers: { 'Prefer': 'resolution=merge-duplicates' },
@@ -88,30 +125,16 @@ async function lockWeek(weekId) {
 async function evaluateWeek(weekId) {
     console.log(`🏆 Spouštím vyhodnocení pro týden: "${weekId}"...`);
 
-    // 1. Získání finální zavírací ceny BTC výhradně z Binance API
-    console.log("📡 Načítám oficiální cenu BTCUSDT z Binance...");
-    
-    let btcRes = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
-    
-    // Pokud GitHub runner dostane geoblock (HTTP 451/403), použijeme Binance US endpoint
-    if (btcRes.status === 451 || btcRes.status === 403) {
-        console.log("⚠️ Globální Binance endpoint vrátil geoblock. Načítám z Binance US...");
-        btcRes = await fetch('https://api.binance.us/api/v3/ticker/price?symbol=BTCUSDT');
+    // --- POJISTKA PROTI DUPLICITNÍMU VYHODNOCENÍ ---
+    const existingWinners = await supabaseFetch(`winners?week_id=eq.${weekId}&select=id`);
+    if (existingWinners && existingWinners.length > 0) {
+        console.log(`🛑 POJISTKA: Týden ${weekId} už byl v databázi vyhodnocen. Přeskakuji opakováné vyhodnocení.`);
+        return;
     }
 
-    if (!btcRes.ok) {
-        throw new Error(`❌ Chyba Binance API: Odpověď serveru ${btcRes.status} ${btcRes.statusText}`);
-    }
-
-    const btcData = await btcRes.json();
-    const rawPrice = btcData && btcData.price;
-    const finalBtcPrice = Number(rawPrice);
-
-    if (!rawPrice || isNaN(finalBtcPrice)) {
-        throw new Error(`❌ Binance API vrátilo neplatný formát ceny: "${rawPrice}"`);
-    }
-
-    console.log(`📌 Oficiální cena BTC (Binance BTCUSDT): $${finalBtcPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+    // 1. Získání přesné nedělní zavírací ceny z Binance
+    const finalBtcPrice = await getSundayClosePrice();
+    console.log(`📌 Oficiální nedělní zavírací cena BTC (23:59 UTC): $${finalBtcPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
 
     // 2. Načtení všech tipů pro daný týden
     const predictions = await supabaseFetch(`predictions?week_id=eq.${weekId}&select=*`);
@@ -153,7 +176,7 @@ async function evaluateWeek(weekId) {
                 payout_sats: payoutPerWinner
             })
         });
-        console.log(`🥇 Vítěz zapísán: ${winner.username} (Tip: $${winner.price_prediction}) -> Payout adresa: ${winner.btc_address}`);
+        console.log(`🥇 Vítěz zapsán: ${winner.username} (Tip: $${winner.price_prediction}) -> Payout adresa: ${winner.btc_address}`);
     }
 
     // 6. Aktualizace stavu v tabulce weeks
